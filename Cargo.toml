@@ -267,7 +267,7 @@ unicode-script = "0.5"
 unicode-segmentation = "1.13.3"
 unicode_categories = "0.1.1"
 url = "2.5"
-urlpattern = "0.3"
+urlpattern = "0.6"
 uuid = { version = "1.23.3", features = ["v4", "v5"] }
 vello = "0.9"
 vello_cpu = { version = "0.0.9", features = ["multithreading"] }
