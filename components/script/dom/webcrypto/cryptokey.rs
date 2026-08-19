@@ -38,8 +38,6 @@ pub(crate) enum CryptoKeyOrCryptoKeyPair {
 /// trait, which signifies that the type will call `Zeroize::zeroize` on `Drop` to securely erase
 /// the secret from memory.
 pub(crate) enum Handle {
-    RsaPrivateKey(rsa::RsaPrivateKey),
-    RsaPublicKey(rsa::RsaPublicKey),
     P256PrivateKey(p256::SecretKey),
     P384PrivateKey(p384::SecretKey),
     P521PrivateKey(p521::SecretKey),
@@ -305,8 +303,6 @@ impl Handle {
 impl MallocSizeOf for Handle {
     fn size_of(&self, ops: &mut malloc_size_of::MallocSizeOfOps) -> usize {
         match self {
-            Handle::RsaPrivateKey(private_key) => private_key.size_of(ops),
-            Handle::RsaPublicKey(public_key) => public_key.size_of(ops),
             Handle::P256PrivateKey(private_key) => private_key.size_of(ops),
             Handle::P384PrivateKey(private_key) => private_key.size_of(ops),
             Handle::P521PrivateKey(private_key) => private_key.size_of(ops),
@@ -351,13 +347,8 @@ impl TryFrom<SerializableCryptoKeyHandle> for Handle {
 
     fn try_from(value: SerializableCryptoKeyHandle) -> Result<Self, Self::Error> {
         match &value {
-            SerializableCryptoKeyHandle::RsaPrivateKey(private_key) => Ok(Handle::RsaPrivateKey(
-                rsa::pkcs8::DecodePrivateKey::from_pkcs8_der(private_key).map_err(|_| ())?,
-            )),
-            SerializableCryptoKeyHandle::RsaPublicKey(public_key) => Ok(Handle::RsaPublicKey(
-                rsa::pkcs8::spki::DecodePublicKey::from_public_key_der(public_key)
-                    .map_err(|_| ())?,
-            )),
+            SerializableCryptoKeyHandle::RsaPrivateKey(_)
+            | SerializableCryptoKeyHandle::RsaPublicKey(_) => Err(()),
             SerializableCryptoKeyHandle::P256PrivateKey(private_key) => Ok(Handle::P256PrivateKey(
                 p256::SecretKey::from_slice(private_key).map_err(|_| ())?,
             )),
@@ -504,17 +495,6 @@ impl TryFrom<&Handle> for SerializableCryptoKeyHandle {
 
     fn try_from(value: &Handle) -> Result<Self, Self::Error> {
         match value {
-            Handle::RsaPrivateKey(private_key) => Ok(SerializableCryptoKeyHandle::RsaPrivateKey(
-                rsa::pkcs8::EncodePrivateKey::to_pkcs8_der(private_key)
-                    .map_err(|_| ())?
-                    .as_bytes()
-                    .to_vec(),
-            )),
-            Handle::RsaPublicKey(public_key) => Ok(SerializableCryptoKeyHandle::RsaPublicKey(
-                rsa::pkcs8::spki::EncodePublicKey::to_public_key_der(public_key)
-                    .map_err(|_| ())?
-                    .into_vec(),
-            )),
             Handle::P256PrivateKey(private_key) => Ok(SerializableCryptoKeyHandle::P256PrivateKey(
                 private_key.to_bytes().as_slice().to_vec(),
             )),

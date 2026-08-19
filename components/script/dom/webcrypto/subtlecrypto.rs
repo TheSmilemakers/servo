@@ -23,7 +23,6 @@ mod kmac_operation;
 mod ml_dsa_operation;
 mod ml_kem_operation;
 mod pbkdf2_operation;
-mod rsa_common;
 mod rsa_oaep_operation;
 mod rsa_pss_operation;
 mod rsassa_pkcs1_v1_5_operation;

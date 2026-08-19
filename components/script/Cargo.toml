@@ -126,7 +126,6 @@ profile_traits = { workspace = true }
 rand = { workspace = true }
 regex = { workspace = true }
 resvg = { workspace = true }
-rsa = { workspace = true }
 rustc-hash = { workspace = true }
 script_bindings = { workspace = true }
 script_webgpu = { workspace = true, optional = true }
