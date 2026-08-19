@@ -48,6 +48,7 @@ impl URLPattern {
         let base_url = base_url.map(|usv_string| usv_string.0);
         let input = bindings_to_third_party::map_urlpattern_input(input);
         let options = urlpattern::UrlPatternOptions {
+            regex_syntax: urlpattern::RegexSyntax::EcmaScript,
             ignore_case: options.ignoreCase,
         };
 
@@ -218,10 +219,10 @@ mod bindings_to_third_party {
 
     pub(super) fn map_urlpattern_input(
         input: USVStringOrURLPatternInit,
-    ) -> urlpattern::quirks::StringOrInit {
+    ) -> urlpattern::quirks::StringOrInit<'static> {
         match input {
             USVStringOrURLPatternInit::USVString(usv_string) => {
-                urlpattern::quirks::StringOrInit::String(usv_string.0)
+                urlpattern::quirks::StringOrInit::String(usv_string.0.into())
             },
             USVStringOrURLPatternInit::URLPatternInit(pattern_init) => {
                 urlpattern::quirks::StringOrInit::Init(map_urlpatterninit(pattern_init))
@@ -281,7 +282,7 @@ mod third_party_to_bindings {
     ) -> URLPatternResult {
         let string_or_init = match string_or_init {
             urlpattern::quirks::StringOrInit::String(string) => {
-                USVStringOrURLPatternInit::USVString(USVString(string))
+                USVStringOrURLPatternInit::USVString(USVString(string.into_owned()))
             },
             urlpattern::quirks::StringOrInit::Init(pattern_init) => {
                 USVStringOrURLPatternInit::URLPatternInit(map_urlpatterninit(pattern_init))
