@@ -11,10 +11,10 @@ use std::time::{Duration, UNIX_EPOCH};
 use atomic_refcell::AtomicRefCell;
 use base64::engine::Engine;
 use base64::engine::general_purpose::STANDARD;
-use chrono::{Local, LocalResult, TimeZone};
 use devtools_traits::{HttpRequest, HttpResponse};
 use headers::{ContentLength, HeaderMapExt};
 use http::HeaderMap;
+use jiff::{Timestamp, tz::TimeZone};
 use malloc_size_of_derive::MallocSizeOf;
 use net::cookie::ServoCookie;
 use net_traits::fetch::headers::extract_mime_type_as_dataurl_mime;
@@ -694,17 +694,23 @@ impl ActorEncode<NetworkEventMsg> for NetworkEventActor {
         let request = self.request.borrow();
         let request = &request.as_ref().expect("There should be a request").request;
 
-        let started_datetime_rfc3339 = match Local.timestamp_millis_opt(
-            request
-                .started_date_time
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as i64,
-        ) {
-            LocalResult::None => "".to_owned(),
-            LocalResult::Single(date_time) => date_time.to_rfc3339(),
-            LocalResult::Ambiguous(date_time, _) => date_time.to_rfc3339(),
-        };
+        let elapsed = request
+            .started_date_time
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
+        let started_datetime_rfc3339 = i64::try_from(elapsed.as_millis())
+            .ok()
+            .and_then(|milliseconds| Timestamp::from_millisecond(milliseconds).ok())
+            .map(|timestamp| {
+                let offset = timestamp.to_zoned_datetime(TimeZone::system()).offset();
+                let date_time = timestamp.display_with_offset(offset);
+                if elapsed.subsec_millis() == 0 {
+                    format!("{date_time:.0}")
+                } else {
+                    format!("{date_time:.3}")
+                }
+            })
+            .unwrap_or_default();
 
         let browsing_context_actor =
             registry.find::<BrowsingContextActor>(&self.browsing_context_name);

@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::str::FromStr;
 
-use chrono::NaiveDateTime;
+use jiff::civil;
 use servo_url::ServoUrl;
 use url::{Position, Url, form_urlencoded};
 
@@ -127,24 +127,16 @@ impl MediaFragmentParser {
 
     fn parse_utc_timestamp(&self, input: &str) -> Result<(Option<f64>, Option<f64>), ()> {
         if input.ends_with('-') || input.starts_with(',') || !input.contains('-') {
-            let sec = parse_hms(
-                NaiveDateTime::parse_from_str(&input.replace(['-', ','], ""), "%Y%m%dT%H%M%S%.fZ")
-                    .map_err(|_| ())?
-                    .time()
-                    .to_string()
-                    .as_ref(),
-            )?;
+            let sec = utc_timestamp_to_seconds(&input.replace(['-', ','], ""))?;
             if input.starts_with(',') {
                 Ok((Some(0.), Some(sec)))
             } else {
                 Ok((Some(sec), None))
             }
         } else {
-            let vec: Vec<&str> = input.split('-').collect();
-            let mut hms: Vec<f64> = vec
-                .iter()
-                .flat_map(|s| NaiveDateTime::parse_from_str(s, "%Y%m%dT%H%M%S%.fZ"))
-                .flat_map(|s| parse_hms(&s.time().to_string()))
+            let mut hms: Vec<f64> = input
+                .split('-')
+                .flat_map(utc_timestamp_to_seconds)
                 .collect();
 
             let end = hms.pop().ok_or(())?;
@@ -249,6 +241,38 @@ fn split_prefix(s: &str) -> (Option<&str>, &str) {
     (None, s)
 }
 
+fn utc_timestamp_to_seconds(input: &str) -> Result<f64, ()> {
+    let timestamp = input.strip_suffix('Z').unwrap_or(input);
+    let (whole_seconds, fraction) = timestamp.split_once('.').unwrap_or((timestamp, ""));
+    // Chrono accepted extra fractional digits and truncated to nanoseconds.
+    let normalized = if input.ends_with('Z')
+        && fraction.len() > 9
+        && fraction.bytes().all(|digit| digit.is_ascii_digit())
+    {
+        Cow::Owned(format!("{whole_seconds}.{}Z", &fraction[..9]))
+    } else {
+        Cow::Borrowed(input)
+    };
+    let date_time =
+        civil::DateTime::strptime("%Y%m%dT%H%M%S%.fZ", normalized.as_ref()).map_err(|_| ())?;
+    let nanoseconds = date_time.subsec_nanosecond();
+    // Jiff normalizes a leap second to 59 and accepts spaces between the
+    // clock fields. Inspect the seconds suffix after validating the timestamp.
+    let seconds = if date_time.second() == 59 && whole_seconds.trim_ascii_end().ends_with("60") {
+        if nanoseconds != 0 {
+            return Err(());
+        }
+        60.
+    } else {
+        f64::from(date_time.second()) + f64::from(nanoseconds) / 1e9
+    };
+    Ok(hms_to_seconds(
+        date_time.hour() as u32,
+        date_time.minute() as u32,
+        seconds,
+    ))
+}
+
 fn hms_to_seconds(hour: u32, minutes: u32, seconds: f64) -> f64 {
     let mut sec: f64 = f64::from(hour) * 3600.;
     sec += f64::from(minutes) * 60.;
@@ -323,4 +347,36 @@ fn parse_hms(s: &str) -> Result<f64, ()> {
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod utc_timestamp_tests {
+    use super::utc_timestamp_to_seconds;
+
+    #[test]
+    fn media_timestamp_preserves_fraction_and_leap_second() {
+        assert_eq!(
+            utc_timestamp_to_seconds("20161231T235959.25Z"),
+            Ok(86399.25)
+        );
+        assert_eq!(utc_timestamp_to_seconds("20161231T235960Z"), Ok(86400.));
+        assert_eq!(utc_timestamp_to_seconds("20161231T23 59 60Z"), Ok(86400.));
+        assert_eq!(utc_timestamp_to_seconds("20161231T235960.25Z"), Err(()));
+        assert_eq!(utc_timestamp_to_seconds("20161231T23 59 60.25Z"), Err(()));
+        assert_eq!(utc_timestamp_to_seconds("20161231T23560Z"), Ok(86160.));
+        let nanosecond_precision = utc_timestamp_to_seconds("20161231T235959.123456789Z").unwrap();
+        assert_eq!(
+            utc_timestamp_to_seconds("20161231T235959.1234567899Z"),
+            Ok(nanosecond_precision)
+        );
+        assert_eq!(
+            utc_timestamp_to_seconds("20161231T235960.0000000009Z"),
+            Ok(86400.)
+        );
+        assert_eq!(
+            utc_timestamp_to_seconds("20161231T235959.123456789aZ"),
+            Err(())
+        );
+        assert_eq!(utc_timestamp_to_seconds("20160230T235959Z"), Err(()));
+    }
 }
